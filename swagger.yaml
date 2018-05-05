@@ -10,9 +10,22 @@ schemes:
 host: simple.api
 basePath: /api
 
+tags:
+- name: "auth"
+  description:  登录
+- name: "admin"
+  description: 权限管理
+- name: "main"
+  description: 主API
+
 paths:
+
+##############################以下为登录部分######################################
+
   /auth/:
     post:
+      tags: 
+      - "auth"
       summary: MAE登录API
       description: login
       parameters: 
@@ -43,9 +56,199 @@ paths:
                 type: string
         401:
           description: 密码错误 or 用户不存在
+  
+#####################################以下为权限管理部分#######################################
+  
+  /admin/users/:
+    get:
+      tags:
+        - "admin"
+      summary: 获取用户列表
+      parameters: 
+        - in: header
+          name: token
+          description:  标识身份的Token
+          required: true
+          type: string
+      responses:
+        200:
+          description: a list of users
+          schema:
+            type: array
+            items:
+              required: 
+                - username
+                - uid
+              properties:
+                username:
+                  type: string
+                uid:
+                  type: integer
+        403:
+          description: Forbidden
+  
+  /admin/user/{uid}/:
+    post:
+      tags:
+        - "admin"
+      summary: 更改用户角色
+      description: 用户角色包括:超级管理员(对用户和应用拥有全部权限)， 管理员(对所有应用拥有全部权限), 普通用户(对所有应用拥有查看权限)，游客(无任何权限).
+      parameters: 
+        - in: header
+          name: token
+          description:  标识身份的Token
+          required: true
+          type: string
+        - in: path
+          name: uid
+          description: 用户id
+          required: true
+          type: integer
+        - in: body
+          name: info
+          required: true
+          description: 可选superadmin admin average visitor
+          schema:
+            properties:
+              role:
+                type: string
+      responses:
+        200:
+          description: OK
+        403:
+          description: Forbidden
+    
+  /app/{appid}/service/{svcid}/admin/:
+    get:
+      tags:
+        - "admin"
+      summary: 获取该服务用户列表
+      parameters:
+        - in: header
+          name: token
+          description:  标识身份的Token
+          required: true
+          type: string
+        - in: path
+          name: appid
+          description: 应用id
+          required: true
+          type: integer
+        - in: path
+          name: svcid
+          description: 服务id
+          required: true
+          type: integer
+      responses:
+        200:
+          description: OK
+          schema:
+            properties:
+              adminlist:
+                type: array
+                description: 管理员列表
+                items:
+                  type: string
+              creatorlist:
+                type: array
+                description: 创建权限用户列表
+                items:
+                  type: string
+              deletorlist:
+                type: array
+                description: 删除权限用户列表
+                items:
+                  type: string
+        403:
+          description: Forbidden
           
+    post:
+      tags:
+        - "admin"
+      summary: 管理用户对应用的权限
+      description: 每个应用有adminlist, creatorlist, deletorlist,分别存放拥有管理权限（增删和用户赋权),创建权限和删除权限的用户.
+      parameters: 
+        - in: header
+          name: token
+          description:  标识身份的Token
+          required: true
+          type: string
+        - in: path
+          name: appid
+          description: 应用id
+          required: true
+          type: integer
+        - in: path
+          name: svcid
+          description: 服务id
+          required: true
+          type: integer
+        - in: body
+          name: postinfo
+          description: post Body
+          required: true
+          schema:
+            properties:
+              listtype:
+                type: string
+                description: 可选admin creator deletor
+              uid:
+                type: integer
+      responses:
+        200:
+          description: OK
+        403:
+          description: Forbidden
+        409:
+          description: 用户已在列表中
+        
+    delete:
+      tags:
+        - "admin"
+      summary: 删除用户对应用的权限
+      parameters: 
+        - in: header
+          name: token
+          description:  标识身份的Token
+          required: true
+          type: string
+        - in: path
+          name: appid
+          description: 应用id
+          required: true
+          type: integer
+        - in: path
+          name: svcid
+          description: 服务id
+          required: true
+          type: integer
+        - in: body
+          name: deleteinfo
+          description: delete Body
+          required: true
+          schema:
+            properties:
+              listtype:
+                type: string
+                description: 可选admin creator deletor
+              uid:
+                type: integer
+      responses:
+        200:
+          description: OK
+        403:
+          description: Forbidden
+        409:
+          description: 用户本不在列表中
+        
+      
+                  
+#################################以下为主API部分#########################################
+  
   /apps/:
     get:
+      tags:
+        - "main"
       summary: 获取应用列表
       parameters: 
         - in: header
@@ -67,8 +270,12 @@ paths:
                   type: integer
                 appname:
                   type: string
+
+
   /app/:
     post:
+      tags:
+        - "main"
       summary: 创建一个应用
       parameters: 
         - in: body
@@ -99,6 +306,8 @@ paths:
                 
   /app/{appid}/services/:
     get:
+      tags:
+        - "main"
       summary: 获取一个app内所有服务
       parameters: 
         - in: header
@@ -129,8 +338,10 @@ paths:
   
   /app/{appid}/service/:      
     post:
-      summary: 创建一个服务
-      description: 如一个APP内拥有前端，后端，redis数据库等服务
+      tags:
+        - "main"
+      summary: 创建一个服务(默认创建一个版本)
+      description: 一个service在k8s内创建一个相应service, 并可以代理多个版本(灰度发布)
       parameters: 
         - in: path
           name: appid
@@ -150,11 +361,14 @@ paths:
             required: 
               - svcname
               - port
+              - version
             properties:
               svcname:
                 type: string
               port:
                 type: integer
+              version:
+                $ref: '#/definitions/VersionCreate'
               
       responses:
         200:
@@ -167,10 +381,13 @@ paths:
                 type: integer
         403:
           description: Forbidden
-      
+  
+  
     
   /app/{appid}/service/{svcid}/versions/:
     get:
+      tags:
+        - "main"
       summary: 获取一个服务所有版本.
       parameters:
         - in: path
@@ -200,6 +417,8 @@ paths:
               
   /app/{appid}/service/{svcid}/version/:
     post:
+      tags:
+        - "main"
       summary: 创建一个服务的某个版本
       parameters: 
         - in: path
@@ -235,7 +454,9 @@ paths:
                 
   /app/{appid}/service/{svcid}/version/{versionid}/:
     get:
-      summary: 激活某版本(deactive其他版本)
+      tags:
+        - "main"
+      summary: 激活&停用某版本
       parameters: 
         - in: path
           name: appid
@@ -256,15 +477,65 @@ paths:
           name: token
           required: true
           type: string
+        - in: query
+          name: action
+          description: 可选action有active deactive
+          required: true
+          type: string
+          
       responses:
         200:
           description: OK
         403:
           description: Forbidden
         409:
-          description: Conflict,原本已经active
-          
+          description: Conflict,原本已经active 或 deactive
+
+    post:
+      tags:
+        - "main"
+      summary: 重建某版本
+      parameters: 
+        - in: path
+          name: appid
+          description: 应用 ID
+          required: true
+          type: integer
+        - in: path
+          name: svcid
+          description: 服务 ID
+          required: true
+          type: integer
+        - in: path
+          name: versionid
+          required: true
+          description: 版本 ID
+          type: integer
+        - in: header
+          name: token
+          required: true
+          type: string
+        - in: body
+          name: RebuildInfo
+          required: true
+          schema:
+            required: 
+              - imageurl
+              - imagetag
+            properties:
+              imageurl:
+                type: string
+              imagetag:
+                type: string
+      responses:
+        200:
+          description: OK
+        403:
+          description: Forbidden
+       
     delete:
+      tags:
+        - "main"
       summary: 删除某个版本
       parameters:
         - in: path
@@ -294,6 +565,8 @@ paths:
 
   /app/{appid}/service/{svcid}/version/{versionid}/logs:
     get:
+      tags:
+        - "main"
       summary: 获取Log
       parameters:
         - in: path
@@ -328,6 +601,8 @@ paths:
   
   /app/{appid}/net/:
     post:
+      tags:
+        - "main"
       summary: 为app提供简单反向代理支持
       parameters: 
         - in: path
